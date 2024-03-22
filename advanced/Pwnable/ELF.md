@@ -179,14 +179,237 @@ typedef struct {
 - PT_PHDR
   - program header table 자기 자신에 대한 정보가 담겨있다.
   - location과 size에 대한 정보가 담겨있음.
+  - program header table이 memory image의 일부일 경우에만 쓰인다.
   - 만약 존재한다면, loadable segment entry보다 앞에 있어야 한다.
 - PT_LOPROC, PT_HIPROC
+  - [PT_LOPROC, PT_HIPROC]의 범위에 있는 값들은 processor-specific하게 reserved 되어있다.
 - PT_GNU_STACK
+  - p_flags 멤버변수에 있는 값을 토대로 stack의 상태를 조정하는 데에 쓰이는 GNU extension이다.
+  - Linux kernel에 의해 사용된다.
 
-##### 
-#####
-#####
-#####
-#####
-#####
-#####
+##### p_offset
+segment의 첫 바이트가 파일의 처음으로부터 얼마나 떨어져 있는지 (offset)의 값.
+
+##### p_vaddr
+segment의 첫 바이트가 메모리상에서 어떤 virtual address에서 시작하는지의 값.
+
+##### p_paddr
+physical address가 사용되는 경우 사용된다. p_vaddr와 의미상 동등하다.
+
+##### p_filesz
+segment의 file image의 크기를 나타낸다.
+
+##### p_memsz
+segment의 memory image의 크기를 나타낸다.
+
+##### p_flags
+해당 segment의 권한 설정을 나타낸다.
+- PF_X : executable
+- PF_W : writable
+- PF_R : readable
+
+##### p_align
+loadable process segment는 p_vaddr와 p_offset을 page size로 나눈 나머지가 동일해야 함.
+0이나 1은 alignment가 필요없다는 뜻이다.
+나머지 경우 : p_align은 양수이면서, 2의 제곱수이면서, p_vaddr와 p_offset은 p_align으로 나눈 나머지가 동일해야 한다.
+
+### 2.3. Section header table
+- 각 section들에 대한 정보가 쓰여있는 table이다.
+- initial entry, SHN_LORESERVE 와 SHN_HIRESERVE 사이의 index들은 reserved 되어있다.
+  - initial entry : e_phnum, e_shnum, e_shstrndx에 사용되고, 이 외에는 0으로 설정된다.
+- object file의 경우 special indices가 없다.
+- 파일 상 위치 : ELF header의 e_shoff에 적혀있는 offset부터 시작한다.
+
+#### 2.3.1. 기본 구조
+```c
+           typedef struct {
+               uint32_t   sh_name;
+               uint32_t   sh_type;
+               uint32_t   sh_flags;
+               Elf32_Addr sh_addr;
+               Elf32_Off  sh_offset;
+               uint32_t   sh_size;
+               uint32_t   sh_link;
+               uint32_t   sh_info;
+               uint32_t   sh_addralign;
+               uint32_t   sh_entsize;
+           } Elf32_Shdr;
+
+           typedef struct {
+               uint32_t   sh_name;
+               uint32_t   sh_type;
+               uint64_t   sh_flags;
+               Elf64_Addr sh_addr;
+               Elf64_Off  sh_offset;
+               uint64_t   sh_size;
+               uint32_t   sh_link;
+               uint32_t   sh_info;
+               uint64_t   sh_addralign;
+               uint64_t   sh_entsize;
+           } Elf64_Shdr;
+```
+
+##### sh_name
+section의 name을 의미하는 멤버변수이다.
+section header string table에서의 index 값이 저장된다.
+
+##### sh_type
+section의 내용과 구성이 어떻게 되어있는지 알려준다.
+
+- SHT_NULL
+  - section header가 inactive 한 상태임을 나타낸다.
+- SHT_PROGBITS
+  - 프로그램에 의해 정의된 정보가 담긴다.
+  - 정보가 저장되는 방식 또한 프로그램에 의해 정의되어 있다.
+- SHT_SYMTAB
+  - symbol table을 담고 있다.
+  - 
+  
+### 2.4. string table
+null-terminated character sequence (string)를 담고 있다.
+symbol이나 section name을 표시하기 위해 쓰인다.
+첫 byte (index zero)는 null byte, 마지막 byte 또한 null byte이다.
+
+### 2.5. symbol table
+각 symbol의 이름, 종류, 크기 위치 등의 정보들이 저장되어 있는 테이블이다.
+
+#### 2.5.1. 기본 구조
+```c
+           typedef struct {
+               uint32_t      st_name;
+               Elf32_Addr    st_value;
+               uint32_t      st_size;
+               unsigned char st_info;
+               unsigned char st_other;
+               uint16_t      st_shndx;
+           } Elf32_Sym;
+
+           typedef struct {
+               uint32_t      st_name;
+               unsigned char st_info;
+               unsigned char st_other;
+               uint16_t      st_shndx;
+               Elf64_Addr    st_value;
+               uint64_t      st_size;
+           } Elf64_Sym;
+```
+##### st_name
+symbol string table의 index 값이 저장된다.
+값이 0이 아니라면, string table index를 통해서 symbol의 이름을 찾을 수 있다.
+-> string table의 0번째 index의 값이 null인 이유.
+
+##### st_value
+symbol의 값이 저장된다.
+
+##### st_size
+symbol의 size값이 저장된다.
+size가 없거나 unknown 이라면 0이 저장된다.
+
+##### st_info
+symbol의 type과 binding 특성이 저장된다. (둘 중 하나가 아니라 둘 다 저장된다.)
+
+- type
+  - STT_NOTYPE
+    - type이 정의되지 않았다.
+  - STT_OBJECT
+    - data object와 연관되어 있다.
+  - STT_FUNC
+    - function 혹은 executable code와 연관되어 있다.
+  - STT_SECTION
+    - section과 연관되어 있다.
+    - 이 타입의 심볼은 주로 relocation을 위한 것이고, STB_LOCAL 바인딩을 가지고 있다..?
+  - STT_FILE
+    - ...
+  _ STT_LOPROC, STT_HIPROC
+    - [STT_LOPROC, STT_HIPROC] are reserved for processor-specific semantics.
+
+- binding
+  - STB_LOCAL
+    - object file의 외부에서는 보이지 않는다.
+    - 그래서 같은 이름일지라도 서로 간섭하지 않고 존재할 수 있다.
+  - STB_GLOBAL
+    - 모든 object files에서 보인다.
+    - 따로 정의되어 있지 않은 다른 object file에서 참조 가능.
+  - STB_WEAK
+    - global symbol과 비슷하지만, 우선순위가 더 낮다.
+  - STB_LOPROC, STB_HIPROC
+    - [STB_LOPROC, STB_HIPROC] are reserved for processor-specific semantics.
+
+아래의 매크로들로 binding과 type field를 추출해낼 수 있다.
+- ELF32_ST_BIND(info), ELF64_ST_BIND(info)
+  - st_info로부터 binding을 추출한다.
+- ELF32_ST_TYPE(info), ELF64_ST_TYPE(info)
+  - st_info로부터 type을 추출한다.
+- ELF32_ST_INFO(bind, type), ELF64_ST_INFO(bind, type)
+  - binding과 type으로부터 st_info를 만들어준다.
+  
+##### st_other
+symbol의 visibility를 정의한다.
+
+- STV_DEFAULT
+  - Default symbol visibility rules.
+  - Global과 weak symbol들은 다른 module에게 모두 보인다.
+  - local module 에서의 참조는 다른 modules에서의 정의된 값으로 될 수 있다.
+- STV_INTERNAL
+  - processor-specific hidden class
+- STV_HIDDEN
+  - 다른 module에게 symbol이 보이지 않는다.
+  - local module에서의 참조는 local symbol만 가능하다.
+- STV_PROTECTED
+  - symbol이 다른 module에게도 보이지만, local module에서의 참조는 오직 local symbol에 의해서만 이루어진다.
+  
+-> STV_DEFAULT와 STV_PROTECTED의 차이 : 당연히 local symbol은 볼 수 없다. 하지만 global / weak symbol은 둘 다 볼 수 있는데, 대신 참조가 preempt되지 않는다. 즉, 같은 이름의 다른 module에서 정의된 2개의 전역변수가 있는 경우, 현재 module에서 정의된 전역변수만을 참조한다는 뜻이다.
+
+visibility type을 추출하는 매크로
+- ELF32_ST_VISIBILITY(other)
+- ELF64_ST_VISIBILITY(other)
+
+##### st_shndx
+모든 symbol table entry는 몇 개의 section과 연관되어 있다.
+이 연관된 section header index 값이 저장된다.
+
+### 2.6. relocation entries (Rel & Rela)
+
+#### 2.6.1. 기본 구조
+- addend가 필요하지 않은 Relocation structure
+```c
+           typedef struct {
+               Elf32_Addr r_offset;
+               uint32_t   r_info;
+           } Elf32_Rel;
+
+           typedef struct {
+               Elf64_Addr r_offset;
+               uint64_t   r_info;
+           } Elf64_Rel;
+```
+
+- addend가 필요한 Relocation structure
+```c
+           typedef struct {
+               Elf32_Addr r_offset;
+               uint32_t   r_info;
+               int32_t    r_addend;
+           } Elf32_Rela;
+
+           typedef struct {
+               Elf64_Addr r_offset;
+               uint64_t   r_info;
+               int64_t    r_addend;
+           } Elf64_Rela;
+```
+
+##### r_offset
+relocation action을 취해야 할 location을 의미한다.
+
+- relocatable file의 경우
+  - section의 시작점부터 relocation으로 인한 storage unit까지의 offset을 의미한다.
+- executable file / shared object 의 경우
+  - relocation으로 인한 storage unit의 virtual address을 의미한다.
+  
+##### r_info
+
+##### r_addend
+https://velog.io/@junttang/SP-7.1-Fundamentals-of-Linking
+https://refspecs.linuxbase.org/elf/gabi4+/ch4.reloc.html
+https://deepfield.blog/kr/ctf/basic/elf%20%ED%8C%8C%EC%9D%BC%20%ED%98%95%EC%8B%9D%EC%97%90%EC%84%9C%20%EC%9E%AC%EB%B0%B0%EC%B9%98(relocation),%20%EB%A7%81%ED%82%B9(linking)%20%EA%B9%8C%EC%A7%80/
